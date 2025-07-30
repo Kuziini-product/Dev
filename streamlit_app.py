@@ -3,6 +3,7 @@ from ai_generator import genereaza_deviz_AI
 from deviz_exporter import export_excel, export_pdf
 from dotenv import load_dotenv
 import os
+from PIL import Image
 import json
 from datetime import datetime
 from pathlib import Path
@@ -10,28 +11,24 @@ from pathlib import Path
 load_dotenv()
 st.set_page_config(page_title="Kuziini | Generator Devize", layout="wide")
 
-logo_path = "Kuziini_logo_negru.png"
-if Path(logo_path).exists():
-    st.image(logo_path, width=250)
+# Logo
+if Path("Kuziini_logo_negru.png").exists():
+    st.image("Kuziini_logo_negru.png", width=250)
 
 st.title("Kuziini | Configurator AI Devize Mobilier")
 
-# 📊 Contor devize
-output_dir = Path("output")
-output_dir.mkdir(exist_ok=True)
-istoric_path = output_dir / "istoric.json"
-nr_devize = len(list(output_dir.glob("OF-*.json")))
-st.markdown(f"📊 **Devize generate: {nr_devize}**")
-
-# 📋 Date client
+# Date client
 col1, col2 = st.columns(2)
 with col1:
     nume_client = st.text_input("Nume client")
 with col2:
     telefon_client = st.text_input("Telefon client")
 
-# 📐 Dimensiuni
-st.subheader("Dimensiuni mobilier (mm)")
+# Imagine
+poza = st.file_uploader("Încarcă o schiță (opțional)", type=["jpg", "png"])
+
+# Dimensiuni
+st.subheader("Dimensiuni (mm)")
 col1, col2, col3 = st.columns(3)
 with col1:
     inaltime = st.number_input("Înălțime", min_value=0)
@@ -40,7 +37,14 @@ with col2:
 with col3:
     adancime = st.number_input("Adâncime", min_value=0)
 
-# 🔧 Tip mobilier
+# Face parte dintr-un ansamblu?
+st.subheader("Face parte dintr-un ansamblu?")
+este_ansamblu = st.checkbox("✔️ Da, acest corp face parte dintr-un ansamblu")
+nume_ansamblu = ""
+if este_ansamblu:
+    nume_ansamblu = st.text_input("Nume proiect / ansamblu", value="")
+
+# Tip mobilier
 tip_mobilier = st.selectbox("Tip mobilier:", [
     "Corp bază bucătărie",
     "Corp suspendat bucătărie",
@@ -53,71 +57,50 @@ tip_mobilier = st.selectbox("Tip mobilier:", [
     "Ansamblu dressing"
 ])
 
-# 🧠 Prompt
-prompt = st.text_area("Descriere detaliată pentru AI")
+# Descriere prompt
+st.subheader("Descriere suplimentară")
+prompt_initial = st.text_area("Scrie detalii despre mobilier, decor, funcționalitate etc.")
+
 foloseste_gpt = st.checkbox("Folosește GPT pentru rescriere prompt", value=True)
 
-# 📎 Export după generare
-def save_offer(meta, content):
-    cod = meta["cod_oferta"]
-    json_path = output_dir / f"{cod}.json"
-    with open(json_path, "w") as f:
-        json.dump(meta, f, indent=2)
-    export_pdf(content, str(output_dir / cod))
-    export_excel(content, str(output_dir / cod))
+# Devize salvate
+output_dir = Path("output")
+output_dir.mkdir(exist_ok=True)
+istoric_path = output_dir / "istoric.json"
 
-# ▶️ Generare ofertă
+# Buton generare
 if st.button("Generează ofertă"):
-    if not nume_client or inaltime == 0 or latime == 0 or adancime == 0:
-        st.warning("Completează toate câmpurile înainte de generare.")
-    else:
-        with st.spinner("🧠 Se generează devizul..."):
-            nr_oferta = nr_devize + 1
-            cod_oferta = f"OF-2025-{nr_oferta:04d}_{nume_client.replace(' ', '')}"
-            prompt_final = prompt
-            if foloseste_gpt:
-                prompt_final = f"Generează un deviz complet pentru un {tip_mobilier} cu dimensiunile {inaltime}x{latime}x{adancime} mm. {prompt}"
-            rezultat = genereaza_deviz_AI(prompt_final)
+    with st.spinner("Se generează devizul..."):
+        prompt_final = prompt_initial
+        if foloseste_gpt:
+            prompt_final = f"Generează un deviz complet pentru un {tip_mobilier} cu dimensiunile {inaltime} x {latime} x {adancime} mm. Detalii: {prompt_initial}"
 
-            st.success("✅ Deviz generat cu succes!")
-            st.markdown(f"**Număr ofertă:** `{cod_oferta}`")
-            st.text_area("Deviz:", rezultat, height=300)
+        rezultat = genereaza_deviz_AI(prompt_final)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        cod_deviz = f"OF-{timestamp}_{nume_client.replace(' ', '_')}"
+        output_json = output_dir / f"{cod_deviz}.json"
 
-            meta = {
-                "cod_oferta": cod_oferta,
-                "nume_client": nume_client,
-                "telefon": telefon_client,
-                "dimensiuni": [inaltime, latime, adancime],
-                "tip": tip_mobilier,
-                "prompt": prompt,
-                "valoare_total": 0,
-                "data": datetime.now().strftime("%Y-%m-%d %H:%M")
-            }
+        info = {
+            "client": nume_client,
+            "telefon": telefon_client,
+            "dimensiuni": [inaltime, latime, adancime],
+            "tip": tip_mobilier,
+            "prompt": prompt_initial,
+            "rezultat": rezultat,
+            "ansamblu": nume_ansamblu if este_ansamblu else None,
+            "timestamp": timestamp
+        }
 
-            # Structură minimală pentru export
-            content = [{
-                "Produs": tip_mobilier,
-                "Cod": "AI-001",
-                "UM": "buc",
-                "Cantitate": 1,
-                "Pret": 1000.00  # exemplu fix, înlocuibil cu analiză reală
-            }]
-            meta["valoare_total"] = 1000.00
+        with open(output_json, "w") as f:
+            json.dump(info, f, indent=2)
 
-            save_offer(meta, content)
+        st.success("✅ Devizul a fost generat!")
+        st.text_area("Deviz generat:", rezultat, height=300)
 
-            if st.button("📤 Exportă PDF și Excel"):
-                st.success("Fișierele au fost exportate în folderul output/")
-
-# 📜 Istoric oferte
+# Istoric
 if istoric_path.exists():
-    st.subheader("📂 Oferte recente")
-    files = sorted(list(output_dir.glob("OF-*.json")), reverse=True)[:10]
-    for f in files:
-        with open(f, "r") as json_f:
-            data = json.load(json_f)
-        col1, col2 = st.columns([6, 1])
-        with col1:
-            st.markdown(f"🔖 `{data['cod_oferta']}` – {data['nume_client']} | {data['dimensiuni']} | {data['data']} | {data['valoare_total']} lei")
-        with col2:
-            st.image("assets/placeholder.png", width=40)
+    st.subheader("📂 Istoric devize generate")
+    with open(istoric_path, "r") as f:
+        istoric = json.load(f)
+    for idx, item in enumerate(reversed(istoric[-5:])):
+        st.markdown(f"**{item['client']}** | {item['tip']} | {item['dimensiuni']} | Prompt: _{item['prompt'][:40]}..._")
