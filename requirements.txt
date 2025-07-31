@@ -3,5 +3,3 @@ openai
 python-dotenv
 pandas
 fpdf
-pydrive
-openpyxl
