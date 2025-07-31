@@ -1,3 +1,4 @@
+
 import streamlit as st
 from ai_generator import genereaza_deviz_AI
 from deviz_exporter import export_excel, export_pdf
@@ -92,7 +93,7 @@ if st.button("Generează ofertă"):
                 upload_to_drive(drive, str(f), client_folder)
         st.success("📤 Fișierele au fost urcate în Google Drive!")
 
-# 📂 Istoric oferte
+# 📂 Istoric oferte cu fallback pentru chei lipsa
 st.subheader("📂 Istoric oferte generate")
 oferta_files = sorted(output_dir.glob("OF-*.json"), reverse=True)
 oferta_options = [f.stem for f in oferta_files]
@@ -103,11 +104,13 @@ if select_oferta:
     if path.exists():
         with open(path, "r") as f:
             data = json.load(f)
-        st.markdown(f"### 🔎 Ofertă: `{data['cod_oferta']}`")
-        st.markdown(f"- 👤 Client: **{data['client']}**")
-        st.markdown(f"- 📏 Dimensiuni: **{data['dimensiuni'][0]} x {data['dimensiuni'][1]} x {data['dimensiuni'][2]} mm**")
-        st.markdown(f"- 🧱 Tip corp: **{data['tip']}**")
-        st.markdown(f"- 💰 Valoare totală: **{data['valoare_total']} lei**")
+        st.markdown(f"### 🔎 Ofertă: `{data.get('cod_oferta', select_oferta)}`")
+        st.markdown(f"- 👤 Client: **{data.get('client', 'necunoscut')}**")
+        dim = data.get('dimensiuni', [])
+        if len(dim) == 3:
+            st.markdown(f"- 📏 Dimensiuni: **{dim[0]} x {dim[1]} x {dim[2]} mm**")
+        st.markdown(f"- 🧱 Tip corp: **{data.get('tip', 'N/A')}**")
+        st.markdown(f"- 💰 Valoare totală: **{data.get('valoare_total', 0)} lei**")
 
         pdf_file = output_dir / f"{select_oferta}.pdf"
         excel_file = output_dir / f"{select_oferta}.xlsx"
