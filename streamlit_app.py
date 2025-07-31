@@ -1,6 +1,7 @@
+
 import streamlit as st
 from ai_generator import genereaza_deviz_AI
-from deviz_exporter import export_excel, export_pdf_estimativ, export_pdf_detaliat
+from deviz_exporter import export_excel, export_pdf
 from drive_uploader import init_drive, upload_to_drive
 from dotenv import load_dotenv
 import os
@@ -82,24 +83,43 @@ if st.button("Generează ofertă"):
             "Cantitate": 1,
             "Pret": 1000.00
         }]
-        export_pdf_estimativ(deviz, str(output_dir / cod))
+        export_pdf(deviz, str(output_dir / cod))
         export_excel(deviz, str(output_dir / cod))
 
-        # Export deviz detaliat
-        materiale = deviz  # pentru test: aceleași date
-        debitare = [{
-            "Placa": "PAL alb",
-            "Latime": 600,
-            "Lungime": 1800,
-            "Grosime": "18mm",
-            "Cantitate": 2
-        }]
-        export_pdf_detaliat(materiale, debitare, str(output_dir / cod))
-
-        # 🔗 Upload în Google Drive
         drive = init_drive()
         client_folder = nume_client.strip().replace(" ", "_")
-        for f in [output_json, output_json.with_suffix("_estimativ.pdf"), output_json.with_suffix("_deviz.pdf"), output_json.with_suffix(".xlsx")]:
+        for f in [output_json, output_json.with_suffix(".pdf"), output_json.with_suffix(".xlsx")]:
             if f.exists():
                 upload_to_drive(drive, str(f), client_folder)
         st.success("📤 Fișierele au fost urcate în Google Drive!")
+
+# 📂 Istoric oferte cu fallback pentru chei lipsa
+st.subheader("📂 Istoric oferte generate")
+oferta_files = sorted(output_dir.glob("OF-*.json"), reverse=True)
+oferta_options = [f.stem for f in oferta_files]
+select_oferta = st.selectbox("Selectează o ofertă:", oferta_options)
+
+if select_oferta:
+    path = output_dir / f"{select_oferta}.json"
+    if path.exists():
+        with open(path, "r") as f:
+            data = json.load(f)
+        st.markdown(f"### 🔎 Ofertă: `{data.get('cod_oferta', select_oferta)}`")
+        st.markdown(f"- 👤 Client: **{data.get('client', 'necunoscut')}**")
+        dim = data.get('dimensiuni', [])
+        if len(dim) == 3:
+            st.markdown(f"- 📏 Dimensiuni: **{dim[0]} x {dim[1]} x {dim[2]} mm**")
+        st.markdown(f"- 🧱 Tip corp: **{data.get('tip', 'N/A')}**")
+        st.markdown(f"- 💰 Valoare totală: **{data.get('valoare_total', 0)} lei**")
+
+        pdf_file = output_dir / f"{select_oferta}.pdf"
+        excel_file = output_dir / f"{select_oferta}.xlsx"
+        col1, col2 = st.columns(2)
+        with col1:
+            if pdf_file.exists():
+                with open(pdf_file, "rb") as f:
+                    st.download_button("📄 Descarcă PDF", f, file_name=pdf_file.name)
+        with col2:
+            if excel_file.exists():
+                with open(excel_file, "rb") as f:
+                    st.download_button("📊 Descarcă Excel", f, file_name=excel_file.name)
