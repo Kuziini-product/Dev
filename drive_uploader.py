@@ -13,7 +13,6 @@ def upload_to_drive(drive, local_path, client_name, year="2025"):
     year_folder_name = year
     client_folder_name = client_name.replace(" ", "_")
 
-    # Creează structura: /Kuziini_Devize/2025/NumeClient/
     def get_or_create_folder(name, parent_id=None):
         query = f"title='{name}' and mimeType='application/vnd.google-apps.folder'"
         if parent_id:
@@ -35,7 +34,6 @@ def upload_to_drive(drive, local_path, client_name, year="2025"):
     year_id = get_or_create_folder(year_folder_name, parent_id=base_id)
     client_id = get_or_create_folder(client_folder_name, parent_id=year_id)
 
-    # Upload fișierul
     filename = os.path.basename(local_path)
     gfile = drive.CreateFile({'title': filename, 'parents': [{'id': client_id}]})
     gfile.SetContentFile(local_path)

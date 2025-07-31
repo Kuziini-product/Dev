@@ -1,103 +1,105 @@
-import pandas as pd
-from fpdf import FPDF
+import streamlit as st
+from ai_generator import genereaza_deviz_AI
+from deviz_exporter import export_excel, export_pdf_estimativ, export_pdf_detaliat
+from drive_uploader import init_drive, upload_to_drive
+from dotenv import load_dotenv
+import os
+import json
+from datetime import datetime
 from pathlib import Path
 
-def clean_text(text):
-    if not isinstance(text, str):
-        return str(text)
-    return (
-        text.replace("ă", "a")
-            .replace("â", "a")
-            .replace("î", "i")
-            .replace("ș", "s")
-            .replace("ț", "t")
-            .replace("Ă", "A")
-            .replace("Â", "A")
-            .replace("Î", "I")
-            .replace("Ș", "S")
-            .replace("Ț", "T")
-    )
+load_dotenv()
+st.set_page_config(page_title="Kuziini | Generator Devize", layout="wide")
 
-def export_excel(deviz_data, nume_fisier):
-    df = pd.DataFrame(deviz_data)
-    df.to_excel(nume_fisier + ".xlsx", index=False)
+if Path("Kuziini_logo_negru.png").exists():
+    st.image("Kuziini_logo_negru.png", width=250)
 
-def export_pdf_estimativ(deviz_data, nume_fisier, logo_path="Kuziini_logo_negru.png"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
+st.title("Kuziini | Configurator AI Devize Mobilier")
 
-    if Path(logo_path).exists():
-        pdf.image(logo_path, x=10, y=8, w=40)
-        pdf.ln(30)
+output_dir = Path("output")
+output_dir.mkdir(exist_ok=True)
 
-    pdf.cell(200, 10, txt="Ofertă estimativă Kuziini", ln=True, align="C")
-    pdf.ln(10)
+nr_oferte = len(list(output_dir.glob("OF-*.json")))
+st.markdown(f"📊 Devize generate: **{nr_oferte}**")
 
-    headers = ["Produs", "Cod", "UM", "Cantitate", "Preț (lei)"]
-    col_widths = [60, 30, 20, 30, 30]
+col1, col2 = st.columns(2)
+with col1:
+    nume_client = st.text_input("Nume client", key="nume_client")
+with col2:
+    telefon_client = st.text_input("Telefon client", key="telefon_client")
 
-    for i, header in enumerate(headers):
-        pdf.cell(col_widths[i], 10, clean_text(header), border=1)
-    pdf.ln()
+col1, col2, col3 = st.columns(3)
+with col1:
+    inaltime = st.number_input("Înălțime", min_value=0, key="inaltime")
+with col2:
+    latime = st.number_input("Lățime", min_value=0, key="latime")
+with col3:
+    adancime = st.number_input("Adâncime", min_value=0, key="adancime")
 
-    total = 0
-    for row in deviz_data:
-        pdf.cell(col_widths[0], 10, clean_text(row.get("Produs", "")), border=1)
-        pdf.cell(col_widths[1], 10, clean_text(row.get("Cod", "")), border=1)
-        pdf.cell(col_widths[2], 10, clean_text(row.get("UM", "")), border=1)
-        pdf.cell(col_widths[3], 10, str(row.get("Cantitate", "")), border=1)
-        pret = row.get("Pret", 0)
-        pdf.cell(col_widths[4], 10, f"{pret:.2f}", border=1)
-        pdf.ln()
-        total += row.get("Cantitate", 0) * pret
+tip_mobilier = st.selectbox("Tip mobilier:", [
+    "Corp bază bucătărie", "Corp suspendat bucătărie",
+    "Corp colțar bază", "Corp colțar suspendat",
+    "Dulap dressing", "Comodă", "Poliță simplă",
+    "Ansamblu bucătărie", "Ansamblu dressing"
+])
 
-    pdf.ln(5)
-    pdf.cell(200, 10, txt=f"Total general: {total:.2f} lei", ln=True, align="R")
-    pdf.output(nume_fisier + "_estimativ.pdf")
+prompt = st.text_area("Descriere pentru AI", key="prompt")
+foloseste_gpt = st.checkbox("Folosește GPT pentru rescriere prompt", value=True)
 
-def export_pdf_detaliat(materiale, debitare, nume_fisier, logo_path="Kuziini_logo_negru.png"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
+if st.button("Generează ofertă"):
+    with st.spinner("🧠 Se generează devizul..."):
+        nr_nou = nr_oferte + 1
+        cod = f"OF-2025-{nr_nou:04d}_{nume_client.replace(' ', '')}"
+        prompt_final = prompt
+        if foloseste_gpt:
+            prompt_final = f"Generează un deviz pentru un {tip_mobilier} cu dimensiunile {inaltime} x {latime} x {adancime} mm. {prompt}"
 
-    if Path(logo_path).exists():
-        pdf.image(logo_path, x=10, y=8, w=40)
-        pdf.ln(30)
+        rezultat = genereaza_deviz_AI(prompt_final)
 
-    # Secțiunea 1 - materiale și accesorii
-    pdf.cell(200, 10, txt="1. Lista materiale și accesorii", ln=True, align="L")
-    headers = ["Produs", "Cod", "UM", "Cantitate", "Preț (lei)"]
-    col_widths = [60, 30, 20, 30, 30]
+        meta = {
+            "cod_oferta": cod,
+            "client": nume_client,
+            "telefon": telefon_client,
+            "dimensiuni": [inaltime, latime, adancime],
+            "tip": tip_mobilier,
+            "prompt": prompt,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "valoare_total": 1000.00
+        }
 
-    for i, header in enumerate(headers):
-        pdf.cell(col_widths[i], 10, clean_text(header), border=1)
-    pdf.ln()
+        output_json = output_dir / f"{cod}.json"
+        with open(output_json, "w") as f:
+            json.dump(meta, f, indent=2)
 
-    for row in materiale:
-        pdf.cell(col_widths[0], 10, clean_text(row.get("Produs", "")), border=1)
-        pdf.cell(col_widths[1], 10, clean_text(row.get("Cod", "")), border=1)
-        pdf.cell(col_widths[2], 10, clean_text(row.get("UM", "")), border=1)
-        pdf.cell(col_widths[3], 10, str(row.get("Cantitate", "")), border=1)
-        pdf.cell(col_widths[4], 10, f"{row.get('Pret', 0):.2f}", border=1)
-        pdf.ln()
+        st.success("✅ Deviz generat")
+        st.markdown(f"**Număr ofertă:** `{cod}`")
+        st.text_area("Rezultat AI:", rezultat, height=300)
 
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="2. Tabel de debitare PAL", ln=True, align="L")
-    headers2 = ["Placă", "Lățime (mm)", "Lungime (mm)", "Grosime", "Cantitate"]
-    widths2 = [50, 30, 30, 30, 30]
+        deviz = [{
+            "Produs": tip_mobilier,
+            "Cod": "AI-001",
+            "UM": "buc",
+            "Cantitate": 1,
+            "Pret": 1000.00
+        }]
+        export_pdf_estimativ(deviz, str(output_dir / cod))
+        export_excel(deviz, str(output_dir / cod))
 
-    for i, header in enumerate(headers2):
-        pdf.cell(widths2[i], 10, clean_text(header), border=1)
-    pdf.ln()
+        # Export deviz detaliat
+        materiale = deviz  # pentru test: aceleași date
+        debitare = [{
+            "Placa": "PAL alb",
+            "Latime": 600,
+            "Lungime": 1800,
+            "Grosime": "18mm",
+            "Cantitate": 2
+        }]
+        export_pdf_detaliat(materiale, debitare, str(output_dir / cod))
 
-    for row in debitare:
-        pdf.cell(widths2[0], 10, clean_text(row.get("Placa", "")), border=1)
-        pdf.cell(widths2[1], 10, str(row.get("Latime", "")), border=1)
-        pdf.cell(widths2[2], 10, str(row.get("Lungime", "")), border=1)
-        pdf.cell(widths2[3], 10, str(row.get("Grosime", "")), border=1)
-        pdf.cell(widths2[4], 10, str(row.get("Cantitate", "")), border=1)
-        pdf.ln()
-
-    pdf.output(nume_fisier + "_deviz.pdf")
+        # 🔗 Upload în Google Drive
+        drive = init_drive()
+        client_folder = nume_client.strip().replace(" ", "_")
+        for f in [output_json, output_json.with_suffix("_estimativ.pdf"), output_json.with_suffix("_deviz.pdf"), output_json.with_suffix(".xlsx")]:
+            if f.exists():
+                upload_to_drive(drive, str(f), client_folder)
+        st.success("📤 Fișierele au fost urcate în Google Drive!")
