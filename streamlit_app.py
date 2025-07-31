@@ -85,10 +85,38 @@ if st.button("Generează ofertă"):
         export_pdf(deviz, str(output_dir / cod))
         export_excel(deviz, str(output_dir / cod))
 
-        # 🔗 Upload în Google Drive
         drive = init_drive()
         client_folder = nume_client.strip().replace(" ", "_")
         for f in [output_json, output_json.with_suffix(".pdf"), output_json.with_suffix(".xlsx")]:
             if f.exists():
                 upload_to_drive(drive, str(f), client_folder)
         st.success("📤 Fișierele au fost urcate în Google Drive!")
+
+# 📂 Istoric oferte
+st.subheader("📂 Istoric oferte generate")
+oferta_files = sorted(output_dir.glob("OF-*.json"), reverse=True)
+oferta_options = [f.stem for f in oferta_files]
+select_oferta = st.selectbox("Selectează o ofertă:", oferta_options)
+
+if select_oferta:
+    path = output_dir / f"{select_oferta}.json"
+    if path.exists():
+        with open(path, "r") as f:
+            data = json.load(f)
+        st.markdown(f"### 🔎 Ofertă: `{data['cod_oferta']}`")
+        st.markdown(f"- 👤 Client: **{data['client']}**")
+        st.markdown(f"- 📏 Dimensiuni: **{data['dimensiuni'][0]} x {data['dimensiuni'][1]} x {data['dimensiuni'][2]} mm**")
+        st.markdown(f"- 🧱 Tip corp: **{data['tip']}**")
+        st.markdown(f"- 💰 Valoare totală: **{data['valoare_total']} lei**")
+
+        pdf_file = output_dir / f"{select_oferta}.pdf"
+        excel_file = output_dir / f"{select_oferta}.xlsx"
+        col1, col2 = st.columns(2)
+        with col1:
+            if pdf_file.exists():
+                with open(pdf_file, "rb") as f:
+                    st.download_button("📄 Descarcă PDF", f, file_name=pdf_file.name)
+        with col2:
+            if excel_file.exists():
+                with open(excel_file, "rb") as f:
+                    st.download_button("📊 Descarcă Excel", f, file_name=excel_file.name)
