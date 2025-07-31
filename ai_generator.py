@@ -15,7 +15,7 @@ def genereaza_deviz_AI(prompt_user: str):
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "Ești un expert în mobilier și generezi devize detaliate pe baza unui prompt și a unei baze de date de materiale."},
+                {"role": "system", "content": "Ești un expert în mobilier care generează devize detaliate."},
                 {"role": "user", "content": prompt_user}
             ],
             temperature=0.4,
